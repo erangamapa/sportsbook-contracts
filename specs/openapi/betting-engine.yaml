@@ -1,0 +1,223 @@
+openapi: 3.0.3
+info:
+  title: Betting Engine API
+  version: 1.0.0
+  description: >
+    Pricing, validation and placement for the sportsbook. This service is owned by
+    the trading core team. Agent services never talk to it directly except through
+    the single privileged placement worker. Every mutating call requires an
+    idempotency key so a retry can never double a bet.
+servers:
+  - url: https://betting.sportsbook.internal/v1
+    description: in cluster, same VPC only
+tags:
+  - name: slips
+  - name: bets
+  - name: limits
+paths:
+  /slips/validate:
+    post:
+      tags: [slips]
+      operationId: validateSlip
+      summary: Reprice and validate a slip server side
+      description: >
+        Always called at submit time. Prices in the request are advisory only.
+        The response carries the engine priced slip and per leg suspension flags.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SlipDraft' }
+      responses:
+        '200':
+          description: priced slip, may differ from requested prices
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PricedSlip' }
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /bets:
+    post:
+      tags: [bets]
+      operationId: placeBet
+      summary: Place a bet for an account
+      description: >
+        The only money moving write in this API. Requires an idempotency key
+        derived from the caller run and tool call ids. When placedBy is an agent
+        the onBehalfOf account must have an active delegation grant.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PlaceBetRequest' }
+      responses:
+        '201':
+          description: bet accepted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Bet' }
+        '409':
+          description: idempotency key replay, returns the original bet
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Bet' }
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /bets/{betId}:
+    get:
+      tags: [bets]
+      operationId: getBet
+      summary: Fetch one bet with its settlement state
+      parameters:
+        - name: betId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: the bet
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Bet' }
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /accounts/{accountId}/limits:
+    get:
+      tags: [limits]
+      operationId: getAccountLimits
+      summary: Live stake and exposure limits for an account
+      parameters:
+        - name: accountId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: current limits
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AccountLimits' }
+components:
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: stable key per logical placement, replays return the first result
+      schema: { type: string, minLength: 16, maxLength: 128 }
+  responses:
+    ValidationError:
+      description: request understood but rejected by validation or limits
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+    NotFound:
+      description: no such resource
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+  schemas:
+    Money:
+      type: object
+      required: [currency, amount]
+      properties:
+        currency: { type: string, example: USDT }
+        amount: { type: string, description: 'decimal string, never floats', example: '25.00' }
+    Selection:
+      type: object
+      required: [eventId, marketId, selectionId, price]
+      properties:
+        eventId: { type: string }
+        marketId: { type: string }
+        selectionId: { type: string }
+        price: { type: string, description: decimal odds as string, example: '1.95' }
+    SlipDraft:
+      type: object
+      required: [accountId, selections, stake]
+      properties:
+        accountId: { type: string }
+        selections:
+          type: array
+          minItems: 1
+          maxItems: 20
+          items: { $ref: '#/components/schemas/Selection' }
+        stake: { $ref: '#/components/schemas/Money' }
+        mode: { type: string, enum: [single, parlay], default: single }
+    PricedSlip:
+      type: object
+      required: [slipId, selections, stake, potentialReturn, valid]
+      properties:
+        slipId: { type: string }
+        selections:
+          type: array
+          items:
+            allOf:
+              - $ref: '#/components/schemas/Selection'
+              - type: object
+                properties:
+                  status: { type: string, enum: [active, suspended, settled] }
+                  repriced: { type: boolean }
+        stake: { $ref: '#/components/schemas/Money' }
+        potentialReturn: { $ref: '#/components/schemas/Money' }
+        valid: { type: boolean }
+        rejections:
+          type: array
+          items: { type: string }
+    PlaceBetRequest:
+      type: object
+      required: [slipId, stake, placedBy]
+      properties:
+        slipId: { type: string, description: from a validate call no older than 5 seconds }
+        stake: { $ref: '#/components/schemas/Money' }
+        placedBy:
+          type: object
+          required: [kind, id]
+          properties:
+            kind: { type: string, enum: [player, agent] }
+            id: { type: string }
+        onBehalfOf:
+          type: string
+          description: player account when an agent places, requires a delegation grant
+        confirmationRef:
+          type: string
+          description: reference to the human confirmation that approved this placement
+    Bet:
+      type: object
+      required: [betId, accountId, selections, stake, status, createdAt]
+      properties:
+        betId: { type: string }
+        accountId: { type: string }
+        selections:
+          type: array
+          items: { $ref: '#/components/schemas/Selection' }
+        stake: { $ref: '#/components/schemas/Money' }
+        potentialReturn: { $ref: '#/components/schemas/Money' }
+        status: { type: string, enum: [pending, open, won, lost, void] }
+        placedBy:
+          type: object
+          properties:
+            kind: { type: string, enum: [player, agent] }
+            id: { type: string }
+        createdAt: { type: string, format: date-time }
+        settledAt: { type: string, format: date-time }
+    AccountLimits:
+      type: object
+      required: [accountId, maxStakePerBet, dailyCap]
+      properties:
+        accountId: { type: string }
+        maxStakePerBet: { $ref: '#/components/schemas/Money' }
+        maxStakePerMarket: { $ref: '#/components/schemas/Money' }
+        dailyCap: { $ref: '#/components/schemas/Money' }
+        exposureCeiling: { $ref: '#/components/schemas/Money' }
+        updatedAt: { type: string, format: date-time }
+    ApiError:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string }
+        message: { type: string }
+        details:
+          type: array
+          items: { type: string }
