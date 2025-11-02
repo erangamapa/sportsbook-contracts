@@ -1,0 +1,194 @@
+openapi: 3.0.3
+info:
+  title: Loyalty and VIP API
+  version: 1.1.0
+  description: >
+    Tiers, benefits, personal limits and custom deals for high value customers.
+    The VIP concierge service reads tiers and benefits freely but every limit
+    change and every deal is a request that a human account manager approves.
+    Nothing in this API lets software raise a limit on its own.
+servers:
+  - url: https://loyalty.sportsbook.internal/v1
+paths:
+  /vip/{customerId}/tier:
+    get:
+      operationId: getTier
+      summary: Current tier and progress for a customer
+      parameters:
+        - $ref: '#/components/parameters/CustomerId'
+      responses:
+        '200':
+          description: tier
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Tier' }
+  /vip/{customerId}/benefits:
+    get:
+      operationId: getBenefits
+      summary: Benefits available at the customer tier
+      parameters:
+        - $ref: '#/components/parameters/CustomerId'
+      responses:
+        '200':
+          description: benefit list filtered by tier, server side
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Benefit' }
+  /vip/{customerId}/limit-requests:
+    post:
+      operationId: createLimitRequest
+      summary: Ask for a temporary or permanent limit change
+      description: >
+        Typical case, a high roller wants a bigger max stake for a tournament.
+        The request lands in the account manager review queue. The concierge
+        agent files it and reports status, it cannot approve it.
+      parameters:
+        - $ref: '#/components/parameters/CustomerId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateLimitRequest' }
+      responses:
+        '201':
+          description: filed for review
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LimitRequest' }
+    get:
+      operationId: listLimitRequests
+      summary: Requests for a customer, newest first
+      parameters:
+        - $ref: '#/components/parameters/CustomerId'
+      responses:
+        '200':
+          description: requests
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/LimitRequest' }
+  /vip/limit-requests/{requestId}/decision:
+    post:
+      operationId: decideLimitRequest
+      summary: Account manager approves or declines, human credential required
+      parameters:
+        - name: requestId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision, decidedBy]
+              properties:
+                decision: { type: string, enum: [approved, declined] }
+                decidedBy: { type: string, description: 'staff id, never a service account' }
+                note: { type: string }
+      responses:
+        '200':
+          description: decided
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LimitRequest' }
+  /vip/{customerId}/deals:
+    post:
+      operationId: proposeDeal
+      summary: File a custom deal proposal for manager approval
+      parameters:
+        - $ref: '#/components/parameters/CustomerId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateDeal' }
+      responses:
+        '201':
+          description: proposed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Deal' }
+components:
+  parameters:
+    CustomerId:
+      name: customerId
+      in: path
+      required: true
+      schema: { type: string }
+  schemas:
+    Tier:
+      type: object
+      required: [customerId, level]
+      properties:
+        customerId: { type: string }
+        level: { type: string, enum: [bronze, silver, gold, platinum, diamond] }
+        cashbackPct: { type: number }
+        progress: { type: number, description: zero to one toward next level }
+        managerHandle: { type: string, description: assigned human account manager }
+    Benefit:
+      type: object
+      required: [benefitId, name]
+      properties:
+        benefitId: { type: string }
+        name: { type: string }
+        description: { type: string }
+        minLevel: { type: string, enum: [bronze, silver, gold, platinum, diamond] }
+    CreateLimitRequest:
+      type: object
+      required: [kind, requestedValue, reason]
+      properties:
+        kind: { type: string, enum: [maxStakePerBet, maxStakePerMarket, dailyCap] }
+        requestedValue:
+          type: object
+          required: [currency, amount]
+          properties:
+            currency: { type: string }
+            amount: { type: string }
+        reason: { type: string, maxLength: 500 }
+        eventContext: { type: string, description: tournament or event this is for, example: world cup finals week }
+        expiresAt: { type: string, format: date-time, description: empty means permanent }
+        filedBy:
+          type: object
+          properties:
+            kind: { type: string, enum: [human, agent] }
+            id: { type: string }
+    LimitRequest:
+      allOf:
+        - $ref: '#/components/schemas/CreateLimitRequest'
+        - type: object
+          required: [requestId, customerId, status, createdAt]
+          properties:
+            requestId: { type: string }
+            customerId: { type: string }
+            status: { type: string, enum: [pending, approved, declined, expired] }
+            decidedBy: { type: string }
+            decidedAt: { type: string, format: date-time }
+            createdAt: { type: string, format: date-time }
+    CreateDeal:
+      type: object
+      required: [summary, terms]
+      properties:
+        summary: { type: string, maxLength: 200 }
+        terms: { type: string, maxLength: 2000 }
+        eventContext: { type: string }
+        filedBy:
+          type: object
+          properties:
+            kind: { type: string, enum: [human, agent] }
+            id: { type: string }
+    Deal:
+      allOf:
+        - $ref: '#/components/schemas/CreateDeal'
+        - type: object
+          required: [dealId, customerId, status, createdAt]
+          properties:
+            dealId: { type: string }
+            customerId: { type: string }
+            status: { type: string, enum: [proposed, approved, declined, withdrawn] }
+            decidedBy: { type: string }
+            createdAt: { type: string, format: date-time }
