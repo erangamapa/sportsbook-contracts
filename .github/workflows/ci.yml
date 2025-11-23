@@ -1,0 +1,38 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  specs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npx --yes @stoplight/spectral-cli lint specs/openapi/*.yaml --ruleset .spectral.yaml
+  ts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: packages/ts/package-lock.json
+      - run: npm ci
+        working-directory: packages/ts
+      - run: npm run typecheck
+        working-directory: packages/ts
+      - run: npm test
+        working-directory: packages/ts
+  py:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -e 'packages/py[dev]'
+      - run: pytest packages/py -q
