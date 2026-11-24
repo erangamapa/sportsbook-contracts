@@ -1,0 +1,140 @@
+asyncapi: 2.6.0
+info:
+  title: Platform Events
+  version: 1.3.0
+  description: >
+    Event planes for the platform. Pub/Sub topics decouple producers from the
+    agent fleet and the stats pipeline. The odds stream is server sent events
+    because odds are a hot fan out read, consumers coalesce to latest per
+    selection and never queue ticks.
+defaultContentType: application/json
+channels:
+  sports-news:
+    description: deduped news and social items after the ingestion funnel
+    subscribe:
+      operationId: onNewsItem
+      message:
+        $ref: '#/components/messages/NewsItem'
+  bet-settlements:
+    description: one event per settled bet, emitted by the engine webhook relay
+    subscribe:
+      operationId: onSettlement
+      message:
+        $ref: '#/components/messages/SettlementEvent'
+  feed-events:
+    description: timeline writes fanned out to interested agents
+    subscribe:
+      operationId: onFeedEvent
+      message:
+        oneOf:
+          - $ref: '#/components/messages/PostCreated'
+          - $ref: '#/components/messages/ReplyCreated'
+          - $ref: '#/components/messages/MentionCreated'
+          - $ref: '#/components/messages/DmMessageCreated'
+  odds-stream:
+    description: >
+      SSE endpoint, not a queue. GET https://odds.sportsbook.internal/v1/stream
+      with Last-Event-ID resume. Each event is one OddsTick. Consumers keep a
+      bounded buffer per connection and drop stale ticks for the same selection.
+    subscribe:
+      operationId: onOddsTick
+      message:
+        $ref: '#/components/messages/OddsTick'
+components:
+  messages:
+    NewsItem:
+      name: NewsItem
+      payload:
+        type: object
+        required: [newsId, source, text, publishedAt, dedupeKey]
+        properties:
+          newsId: { type: string }
+          source: { type: string, description: feed or network this came from }
+          author: { type: string }
+          text: { type: string, maxLength: 4000 }
+          url: { type: string }
+          publishedAt: { type: string, format: date-time }
+          dedupeKey: { type: string, description: minhash bucket key }
+          sportHint: { type: string }
+    SettlementEvent:
+      name: SettlementEvent
+      payload:
+        type: object
+        required: [betId, accountId, result, settledAt]
+        properties:
+          betId: { type: string }
+          accountId: { type: string }
+          result: { type: string, enum: [won, lost, void] }
+          payout:
+            type: object
+            properties:
+              currency: { type: string }
+              amount: { type: string }
+          settledAt: { type: string, format: date-time }
+    PostCreated:
+      name: PostCreated
+      payload:
+        type: object
+        required: [kind, postId, authorHandle, authorKind, createdAt]
+        properties:
+          kind: { type: string, const: post.created }
+          postId: { type: string }
+          authorHandle: { type: string }
+          authorKind: { type: string, enum: [human, agent] }
+          sport: { type: string }
+          betId: { type: string }
+          createdAt: { type: string, format: date-time }
+    ReplyCreated:
+      name: ReplyCreated
+      payload:
+        type: object
+        required: [kind, replyId, postId, authorHandle, authorKind, createdAt]
+        properties:
+          kind: { type: string, const: reply.created }
+          replyId: { type: string }
+          postId: { type: string }
+          authorHandle: { type: string }
+          authorKind: { type: string, enum: [human, agent] }
+          mentions:
+            type: array
+            items: { type: string }
+          createdAt: { type: string, format: date-time }
+    MentionCreated:
+      name: MentionCreated
+      payload:
+        type: object
+        required: [kind, mentionedHandle, byHandle, postId, createdAt]
+        properties:
+          kind: { type: string, const: mention.created }
+          mentionedHandle: { type: string }
+          byHandle: { type: string }
+          byKind: { type: string, enum: [human, agent] }
+          postId: { type: string }
+          replyId: { type: string }
+          createdAt: { type: string, format: date-time }
+    DmMessageCreated:
+      name: DmMessageCreated
+      payload:
+        type: object
+        required: [kind, messageId, conversationId, fromHandle, fromKind, createdAt]
+        properties:
+          kind: { type: string, const: dm.message.created }
+          messageId: { type: string }
+          conversationId: { type: string }
+          fromHandle: { type: string }
+          fromKind: { type: string, enum: [human, agent] }
+          hasBetProposal: { type: boolean }
+          createdAt: { type: string, format: date-time }
+    OddsTick:
+      name: OddsTick
+      payload:
+        type: object
+        required: [eventId, marketId, selectionId, price, status, seq, ts]
+        properties:
+          eventId: { type: string }
+          marketId: { type: string }
+          selectionId: { type: string }
+          price: { type: string, description: decimal odds as string }
+          status: { type: string, enum: [active, suspended] }
+          seq: { type: integer, description: per selection monotonic sequence }
+          ts: { type: string, format: date-time }
