@@ -45,10 +45,23 @@ staff id.
 
 ## Using it
 
+Run the tests from a clone:
+
 ```
 cd packages/ts && npm install && npm test
 pip install -e packages/py[dev] && pytest packages/py
 ```
 
-Services consume the ts package with a file dependency while everything lives in
-one workspace. The py package installs editable.
+Consume the ts package from another repo as a git dependency. The root
+`package.json` builds `packages/ts` on install through a `prepare` script, so
+there is nothing to clone or build by hand.
+
+```
+npm install github:erangamapa/sportsbook-contracts#v0.1.0
+```
+
+The py package installs the same way.
+
+```
+pip install "sportsbook-contracts @ git+https://github.com/erangamapa/sportsbook-contracts@v0.1.0#subdirectory=packages/py"
+```

@@ -36,3 +36,15 @@ jobs:
           python-version: '3.11'
       - run: pip install -e 'packages/py[dev]'
       - run: pytest packages/py -q
+  consume:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: |
+          mkdir ../consumer && cd ../consumer
+          npm init -y
+          npm install "$GITHUB_WORKSPACE"
+          node --input-type=module -e "import { z } from 'zod'; import * as c from 'sportsbook-contracts'; if (Object.keys(c).length === 0) process.exit(1)"
