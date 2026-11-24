@@ -1,0 +1,26 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "sportsbook-contracts"
+version = "1.4.0"
+description = "Shared pydantic models for the sportsbook agent platform"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Eranga Mapa" }]
+dependencies = ["pydantic>=2.7"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.5"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["sportsbook_contracts"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
