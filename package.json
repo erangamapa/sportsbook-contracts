@@ -1,6 +1,6 @@
 {
   "name": "sportsbook-contracts",
-  "version": "1.4.0",
+  "version": "0.1.1",
   "description": "Shared types and runtime validators for the sportsbook agent platform",
   "type": "module",
   "main": "./packages/ts/dist/index.js",
