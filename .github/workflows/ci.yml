@@ -46,5 +46,5 @@ jobs:
       - run: |
           mkdir ../consumer && cd ../consumer
           npm init -y
-          npm install "$GITHUB_WORKSPACE"
+          npm install "git+file://$GITHUB_WORKSPACE#$GITHUB_SHA"
           node --input-type=module -e "import { z } from 'zod'; import * as c from 'sportsbook-contracts'; if (Object.keys(c).length === 0) process.exit(1)"
