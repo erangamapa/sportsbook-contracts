@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Betting Engine API
-  version: 1.0.0
+  version: 1.4.0
   description: >
     Pricing, validation and placement for the sportsbook. This service is owned by
     the trading core team. Agent services never talk to it directly except through
@@ -99,6 +99,27 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/AccountLimits' }
+  /accounts/{accountId}/limits/check:
+    post:
+      tags: [limits]
+      operationId: checkStakeLimits
+      summary: Check a proposed stake against live limits without placing
+      parameters:
+        - name: accountId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/StakeCheckRequest' }
+      responses:
+        '200':
+          description: verdict with the binding limit when rejected
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StakeCheckResult' }
 components:
   parameters:
     IdempotencyKey:
@@ -212,6 +233,21 @@ components:
         dailyCap: { $ref: '#/components/schemas/Money' }
         exposureCeiling: { $ref: '#/components/schemas/Money' }
         updatedAt: { type: string, format: date-time }
+    StakeCheckRequest:
+      type: object
+      required: [stake]
+      properties:
+        stake: { $ref: '#/components/schemas/Money' }
+        marketId: { type: string }
+    StakeCheckResult:
+      type: object
+      required: [allowed]
+      properties:
+        allowed: { type: boolean }
+        bindingLimit:
+          type: string
+          enum: [maxStakePerBet, maxStakePerMarket, dailyCap, exposureCeiling]
+        remaining: { $ref: '#/components/schemas/Money' }
     ApiError:
       type: object
       required: [code, message]

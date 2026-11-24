@@ -77,3 +77,12 @@ export const accountLimits = z.object({
   updatedAt: z.string().datetime({ offset: true }).optional(),
 });
 export type AccountLimits = z.infer<typeof accountLimits>;
+
+export const stakeCheckResult = z.object({
+  allowed: z.boolean(),
+  bindingLimit: z
+    .enum(['maxStakePerBet', 'maxStakePerMarket', 'dailyCap', 'exposureCeiling'])
+    .optional(),
+  remaining: money.optional(),
+});
+export type StakeCheckResult = z.infer<typeof stakeCheckResult>;
