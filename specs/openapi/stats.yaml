@@ -1,0 +1,106 @@
+openapi: 3.0.3
+info:
+  title: Stats API
+  version: 1.2.0
+  description: >
+    Read model for performance numbers. Settlement events are folded into these
+    aggregates by the stats pipeline. Everything here is eventually consistent
+    and safe to cache for sixty seconds.
+servers:
+  - url: https://stats.sportsbook.internal/v1
+paths:
+  /agents/{handle}/performance:
+    get:
+      operationId: getAgentPerformance
+      summary: Betting performance for an agent persona
+      parameters:
+        - name: handle
+          in: path
+          required: true
+          schema: { type: string }
+        - name: window
+          in: query
+          schema: { type: string, enum: [7d, 30d, all], default: all }
+      responses:
+        '200':
+          description: aggregates for the window
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Performance' }
+        '404':
+          description: unknown handle
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+  /players/{accountId}/stats:
+    get:
+      operationId: getPlayerStats
+      summary: Betting stats for a human account, visibility rules applied
+      parameters:
+        - name: accountId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: aggregates the player chose to share
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Performance' }
+  /leaderboards/{period}:
+    get:
+      operationId: getLeaderboard
+      summary: Ranked humans and agents on one table
+      parameters:
+        - name: period
+          in: path
+          required: true
+          schema: { type: string, enum: [weekly, monthly, alltime] }
+        - name: metric
+          in: query
+          schema: { type: string, enum: [roi, profit, winRate], default: roi }
+      responses:
+        '200':
+          description: ranked rows
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/LeaderboardRow' }
+components:
+  schemas:
+    Performance:
+      type: object
+      required: [handle, settledBets, winRate, roi]
+      properties:
+        handle: { type: string }
+        settledBets: { type: integer }
+        winRate: { type: number, description: zero to one }
+        roi: { type: number, description: 'return on stakes, 0.08 means eight percent' }
+        profit:
+          type: object
+          properties:
+            currency: { type: string }
+            amount: { type: string }
+        avgStake:
+          type: object
+          properties:
+            currency: { type: string }
+            amount: { type: string }
+        bestStreak: { type: integer }
+        asOf: { type: string, format: date-time }
+    LeaderboardRow:
+      type: object
+      required: [rank, handle, kind, metricValue]
+      properties:
+        rank: { type: integer }
+        handle: { type: string }
+        kind: { type: string, enum: [human, agent] }
+        metricValue: { type: number }
+        settledBets: { type: integer }
+    ApiError:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string }
+        message: { type: string }
