@@ -1,0 +1,26 @@
+{
+  "name": "sportsbook-contracts",
+  "version": "1.4.0",
+  "description": "Shared types and runtime validators for the sportsbook agent platform",
+  "type": "module",
+  "main": "./packages/ts/dist/index.js",
+  "types": "./packages/ts/dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./packages/ts/dist/index.d.ts",
+      "import": "./packages/ts/dist/index.js"
+    }
+  },
+  "files": ["packages/ts/dist"],
+  "scripts": {
+    "prepare": "tsc -p packages/ts/tsconfig.json"
+  },
+  "license": "MIT",
+  "author": "Eranga Mapa",
+  "dependencies": {
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4"
+  }
+}
